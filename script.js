@@ -2,7 +2,7 @@ const canvas = document.querySelector('canvas');
 const ctx = canvas.getContext('2d');
 const tmpCanvas = document.createElement('canvas');
 const tmpCTX = tmpCanvas.getContext('2d');
-let tmpImg = {data: []};
+let tmpImg;
 const params = new URLSearchParams(window.location.search);
 const url = new URL(window.location.href);
 
@@ -95,10 +95,23 @@ const materials = [
   }
 ];
 
-if (params.has('add')) {
-  const toAdd = params.get('add');
-  console.log('Adding:\n'+toAdd);
+
+const effectFunctions = {};
+function addEffect([name, min, func]){
+  func = new Function('data', 'move', 'find', 'findID', 'rand', 'edit', 'keys', 'x', 'y', func)
+  effectFunctions[name] = {min, func};
+}
+
+if (params.has('addElem')) {
+  const toAdd = params.get('addElem');
+  console.log('Adding Element:\n'+toAdd);
   materials.push(...JSON.parse(toAdd));
+}
+
+if (params.has('addEffect')) {
+  const toAdd = JSON.parse(params.get('addEffect'));
+  console.log('Adding Effect:\n'+toAdd);
+  toAdd.forEach(addEffect);
 }
 
 for (let i = 0; i < materials.length; i++) {
@@ -159,8 +172,9 @@ function find([x, y]) {
   return pxs.findIndex(p => p[0] === x && p[1] === y);
 }
 
-function findID([x, y]) {
-  return ids[find([x, y])];
+function findID([x,y]) {
+  const i = find([x,y]);
+  return i === -1 ? -1 : ids[i];
 }
 
 function edit([x, y], id, remove) {
@@ -224,8 +238,9 @@ function redraw() {
 
   if (preID != currentId) materialSelect.value = currentId;
 
-  resizeCanvas();
-  tmpImg = ctx.createImageData(c.w, c.h);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!tmpImg || tmpImg.width !== c.w || tmpImg.height !== c.h) tmpImg = ctx.createImageData(c.w, c.h);
+  else tmpImg.data.fill(0);
 
   // Add Brush
   const half = brush/2|0;
@@ -244,7 +259,8 @@ function redraw() {
     if (!pxs[i]) continue;
     let [x, y] = pxs[i];
     let id = ids[i];
-    let {color, created} = datas[i];
+    const data = datas[i]
+    let {color, created} = data;
     let {rules, effects} = materials[id];
 
     if (x >= c.w || y >= c.h) continue;
@@ -252,16 +268,9 @@ function redraw() {
     function move([nx, ny]) {
       const fx = x+nx;
       const fy = y+ny;
-      const ox = x;
-      const oy = y;
+      if (fx < 0 || fy < 0 || fx >= c.w || fy >= c.h) return false;
       if (find([fx, fy]) != -1) return false;
-      x = Math.max(0, Math.min(c.w - 1, fx));
-      y = Math.max(0, Math.min(c.h - 1, fy));
-      if (x != fx || y != fy) {
-        x = ox;
-        y = oy;
-        return false;
-      };
+      x = fx; y = fy;
       return true;
     }
 
@@ -269,17 +278,15 @@ function redraw() {
     if (effects) {
       for (let effect of effects) {
         // EFFECT KILL
-        if (effect[0] == 'kill' && effect.length > 1) {
+        if (effect[0] == 'kill' && effect.length > 2) {
           const epos = [x + effect[1][0], y + effect[1][1]];
           const targetID = findID(epos);
-          const targets = effect[2].split(' ');
+          const list = effect[2].split(' ').map(t => Number(t.slice(1)));
 
-          for (let t of targets) {
-            if (t.startsWith('!') ? targetID != t.slice(1) : targetID == t) {
-              const pxi = edit(epos, 0, true);
-              if (effect[1][0] == 0 && effect[1][1] == 0) stop = true;
-              if (pxi != -1 && pxi < i) i--;
-            }
+          if (!list.includes(targetID)) {
+            const pxi = edit(epos, 0, true);
+            if (effect[1][0] == 0 && effect[1][1] == 0) stop = true;
+            if (pxi != -1 && pxi < i) i--;
           }
           continue;
         }
@@ -300,17 +307,25 @@ function redraw() {
           }
           continue;
         }
+
+        if (effectFunctions[effect[0]]) {
+          const func = effectFunctions[effect[0]];
+          if (effect.length >= func.min)
+          func.func(data, move, find, findID, rand, edit, keys, x, y);
+        }
       }
 
       if (stop) continue;
     }
 
-    for (let rule of rules) {
-      let choice;
-      if (typeof rule[0] == 'number') choice = rule;
-      else choice = rule[Math.floor(Math.random()*rule.length)];
+    if (rules) {
+      for (let rule of rules) {
+        let choice;
+        if (typeof rule[0] == 'number') choice = rule;
+        else choice = rule[Math.floor(Math.random()*rule.length)];
 
-      if (move(choice)) break;
+        if (move(choice)) break;
+      }
     }
 
     pxs[i][0] = x;
@@ -349,12 +364,15 @@ document.addEventListener('mousemove', e => {
 canvas.addEventListener('mousedown', () => mouse.down = true);
 document.addEventListener('mouseup', () => mouse.down = false);
 
-document.addEventListener('keydown', e => keys[e.key] = true);
+document.addEventListener('keydown', e => keys[e.key] = 1);
 document.addEventListener('keyup', e => delete keys[e.key]);
 
 brushSize.addEventListener('input', e => brushSizeDisplay.innerHTML = brush = brushSize.value);
 pixelSize.addEventListener('input', e => pixelSizeDisplay.innerHTML = pxScale = pixelSize.value);
 itemAlpha.addEventListener('input', e => itemAlphaDisplay.innerHTML = preAlpha = itemAlpha.value);
-materialSelect.addEventListener('input', e => currentId = materialSelect.value);
+materialSelect.addEventListener('input', e => currentId = +materialSelect.value);
 
-setInterval(redraw, 1/60);
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas)
+
+setInterval(redraw, 1000/60);
