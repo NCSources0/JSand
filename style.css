@@ -17,7 +17,7 @@ canvas {
   background: #000;
 }
 
-#options {
+.options {
   position: fixed;
   top: 4px;
   right: 4px;
@@ -26,6 +26,10 @@ canvas {
   backdrop-filter: blur(4px);
   padding: 4px;
   border-radius: 8px;
+}
+
+#advanced {
+  left: 4px;
 }
 
 * {

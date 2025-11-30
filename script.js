@@ -3,8 +3,10 @@ const ctx = canvas.getContext('2d');
 const tmpCanvas = document.createElement('canvas');
 const tmpCTX = tmpCanvas.getContext('2d');
 let tmpImg = {data: []};
-const preAlpha = 1;
+const params = new URLSearchParams(window.location.search);
+const url = new URL(window.location.href);
 
+let preAlpha = 1;
 let currentId = 0;
 let pxScale = 16;
 let brush = 3;
@@ -17,7 +19,14 @@ const pixelSize = document.querySelector('input#pixel');
 const pixelSizeDisplay = document.querySelector('span#pixel');
 pixelSizeDisplay.innerHTML = pixelSize.value = pxScale;
 
+const itemAlpha = document.querySelector('input#alpha');
+const itemAlphaDisplay = document.querySelector('span#alpha');
+itemAlphaDisplay.innerHTML = itemAlpha.value = preAlpha;
+
 const materialSelect = document.querySelector('select#material');
+
+const advanced = document.querySelector('#advanced')
+if (params.has('advanced')) advanced.toggleAttribute('hidden');
 
 const c = { w: 1, h: 1 };
 let mouse = {x:0,y:0,down:false};
@@ -36,7 +45,7 @@ let pxs = [];
   name: 'Name'
   color: ['rgb' or 'hsv', [c1, c2, c3], [c1, c2, c3](optional)]
   rules: [move [x, y] if not, move [x, y] if not, move [x, y]...]
-  effects: [['kill', [x, y], id], ['die', [time1, time2]]]
+  effects: [['kill', [x, y], id], ['die', [time1, time2]], ['move', [x, y]]]
 }
 */
 const materials = [
@@ -74,7 +83,7 @@ const materials = [
   },
   {
     name: 'Fire',
-    color: ['rgb', [255, 255, 0], [255, 0, 0]],
+    color: ['hsv', [60, 100, 100], [0, 100, 100]],
     rules: [[0, -1]],
     effects: [['die', [2000, 10000]], ['kill', [0, -1], '!6 !4'], ['kill', [1, 0], '!6 !4'], ['kill', [-1, 0], '!6 !4'], ['move', [1, 0], 0.1], ['move', [-1, 0], 0.1]]
   },
@@ -84,7 +93,13 @@ const materials = [
     rules: [],
     effects: [['kill', [0, -1], '!7'], ['kill', [0, 1], '!7'], ['kill', [-1, 0], '!7'], ['kill', [1, 0], '!7']]
   }
-]
+];
+
+if (params.has('add')) {
+  const toAdd = params.get('add');
+  console.log('Adding:\n'+toAdd);
+  materials.push(...JSON.parse(toAdd));
+}
 
 for (let i = 0; i < materials.length; i++) {
   const mat = materials[i];
@@ -339,6 +354,7 @@ document.addEventListener('keyup', e => delete keys[e.key]);
 
 brushSize.addEventListener('input', e => brushSizeDisplay.innerHTML = brush = brushSize.value);
 pixelSize.addEventListener('input', e => pixelSizeDisplay.innerHTML = pxScale = pixelSize.value);
+itemAlpha.addEventListener('input', e => itemAlphaDisplay.innerHTML = preAlpha = itemAlpha.value);
 materialSelect.addEventListener('input', e => currentId = materialSelect.value);
 
 setInterval(redraw, 1/60);
