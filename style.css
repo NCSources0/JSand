@@ -1,0 +1,49 @@
+@font-face {
+  font-family: Nunito;
+  src: url(Nunito.ttf);
+  font-style: normal;
+}
+
+@font-face {
+  font-family: Nunito;
+  src: url(Nunito-Italic.ttf);
+  font-style: italic;
+}
+
+canvas {
+  position: fixed;
+  left: 0;
+  top: 0;
+  background: #000;
+}
+
+#options {
+  position: fixed;
+  top: 4px;
+  right: 4px;
+  width: 120px;
+  background: #0001;
+  backdrop-filter: blur(4px);
+  padding: 4px;
+  border-radius: 8px;
+}
+
+* {
+  color: #fff;
+  font-family: Nunito;
+  font-size: 16px;
+}
+
+input, select {
+  width: 120px;
+}
+
+select {
+  background-color: #fff1;
+  border: 0;
+  border-radius: 4px;
+}
+
+option {
+  font-family: Nunito;
+}
