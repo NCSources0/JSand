@@ -330,6 +330,16 @@ function redraw() {
       if (pxi != -1 && pxi < i) i--;
     }
 
+    if (rules) {
+      for (let rule of rules) {
+        let choice;
+        if (typeof rule[0] == 'number') choice = rule;
+        else choice = rule[Math.floor(Math.random()*rule.length)];
+
+        if (move(choice)) break;
+      }
+    }
+
     let stop = false;
     if (effects) {
       for (let effect of effects) {
@@ -374,16 +384,6 @@ function redraw() {
       }
 
       if (stop) continue;
-    }
-
-    if (rules) {
-      for (let rule of rules) {
-        let choice;
-        if (typeof rule[0] == 'number') choice = rule;
-        else choice = rule[Math.floor(Math.random()*rule.length)];
-
-        if (move(choice)) break;
-      }
     }
 
     pxs[i][0] = x;
