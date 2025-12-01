@@ -9,28 +9,17 @@ const url = new URL(window.location.href);
 
 const exampleElem = {
   EXAMPLE_Bullet: {
-    name: 'Bullet',
-    color: ['rgb', [255, 255, 255]],
-    rules: [[0, -1]],
-    effects: [['dieAtTop'], ['kill', [0, -1], 'MAINGAME_Wall']]
-  },
-  EXAMPLE_Spawner: {
-    name: 'Spawner',
-    color: ['rgb', [100, 0, 0]],
-    rules: [[-1, 0], [0, 1]],
-    effects: [['spawn', 'MAINGAME_Wall', 0.01], ['kill', [-1, 0], 'EXAMPLE_Spawner'], ['kill', [0, 1], 'EXAMPLE_Spawner']]
+    name: 'Player',
+    color: ['rgb', [255, 127, 0]],
+    rules: [[0, 1]],
+    effects: [['movement']]
   }
 };
 const exampleEffect = [
   [
-    'dieAtTop',
+    'movement',
     1,
-    `if (y <= 0) edit([x, y], 0, true); stop.stop = true;`
-  ],
-  [
-    'spawn',
-    3,
-    `if (Math.random() < effect[2]) edit([Math.floor(Math.random() * c.w), Math.floor(Math.random() * c.h)], effect[1], false)`
+    `if(keys['w'])move([0,-1]);if(keys['a'])move([-1,0]);if(keys['s'])move([0,1]);if(keys['d'])move([1,0]);`
   ]
 ];
 params.set('addElem', JSON.stringify(exampleElem));
@@ -40,6 +29,7 @@ let preAlpha = 1;
 let currentId = 0;
 let pxScale = 16;
 let brush = 3;
+let paused = false;
 
 let currentKey;
 let currentMaterial;
@@ -57,6 +47,7 @@ const itemAlphaDisplay = document.querySelector('span#alpha');
 itemAlphaDisplay.innerHTML = itemAlpha.value = preAlpha;
 
 const materialSelect = document.querySelector('select#material');
+const pauseBtn = document.querySelector('input#paused');
 
 const advanced = document.querySelector('#advanced')
 if (params.has('advanced')) advanced.toggleAttribute('hidden');
@@ -265,7 +256,7 @@ function px(x, y, [type, r, g, b]) {
   tmpImg.data[px+3] = 255;
 }
 
-function redraw() {
+function main() {
   tick++;
 
   const preID = currentId;
@@ -284,9 +275,9 @@ function redraw() {
   else if         (keys['=']) currentId = 12;
   else if (keys['Backspace']) currentId = 13;
 
-  if (preID != currentId) materialSelect.value = currentId;
   currentKey = materialIDs[currentId];
   currentMaterial = materials[currentKey];
+  if (preID != currentId) materialSelect.value = currentKey;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (!tmpImg || tmpImg.width !== c.w || tmpImg.height !== c.h) tmpImg = ctx.createImageData(c.w, c.h);
@@ -330,60 +321,62 @@ function redraw() {
       if (pxi != -1 && pxi < i) i--;
     }
 
-    if (rules) {
-      for (let rule of rules) {
-        let choice;
-        if (typeof rule[0] == 'number') choice = rule;
-        else choice = rule[Math.floor(Math.random()*rule.length)];
+    if (!paused){
+      if (rules) {
+        for (let rule of rules) {
+          let choice;
+          if (typeof rule[0] == 'number') choice = rule;
+          else choice = rule[Math.floor(Math.random()*rule.length)];
 
-        if (move(choice)) break;
-      }
-    }
-
-    let stop = false;
-    if (effects) {
-      for (let effect of effects) {
-        let stopObj = { stop: false };
-        if (effectFunctions[effect[0]]) {
-          const func = effectFunctions[effect[0]];
-          if (effect.length >= func.min) func.func(data, move, find, findID, rand, replace, keys, x, y, effect, stopObj.stop);
-          continue;
-        }
-        if (stopObj.stop) stop = true;
-
-        // EFFECT KILL
-        if (effect[0] == 'kill' && effect.length > 2) {
-          const epos = [x + effect[1][0], y + effect[1][1]];
-          const targetID = findID(epos);
-          const list = effect[2].split(' ').map(t => t.slice(1));
-
-          if (!list.includes(targetID)) {
-            const pxi = edit(epos, 0, true);
-            if (effect[1][0] == 0 && effect[1][1] == 0) stop = true;
-            if (pxi != -1 && pxi < i) i--;
-          }
-          continue;
-        }
-
-        // EFFECT DIE
-        if (effect[0] == 'die' && effect.length > 1){
-          if (tick - created > rand(effect[1])) {
-            edit([x, y], 0, true);
-            stop = true;
-          }
-          continue;
-        }
-        
-        // EFFECT MOVE
-        if (effect[0] == 'move' && effect.length > 2) {
-          if (Math.random() < effect[2]) {
-            move([effect[1][0], effect[1][1]]);
-          }
-          continue;
+          if (move(choice)) break;
         }
       }
 
-      if (stop) continue;
+      let stop = false;
+      if (effects) {
+        for (let effect of effects) {
+          let stopObj = { stop: false };
+          if (effectFunctions[effect[0]]) {
+            const func = effectFunctions[effect[0]];
+            if (effect.length >= func.min) func.func(data, move, find, findID, rand, replace, keys, x, y, effect, stopObj.stop);
+            continue;
+          }
+          if (stopObj.stop) stop = true;
+
+          // EFFECT KILL
+          if (effect[0] == 'kill' && effect.length > 2) {
+            const epos = [x + effect[1][0], y + effect[1][1]];
+            const targetID = findID(epos);
+            const list = effect[2].split(' ').map(t => t.slice(1));
+
+            if (!list.includes(targetID)) {
+              const pxi = edit(epos, 0, true);
+              if (effect[1][0] == 0 && effect[1][1] == 0) stop = true;
+              if (pxi != -1 && pxi < i) i--;
+            }
+            continue;
+          }
+
+          // EFFECT DIE
+          if (effect[0] == 'die' && effect.length > 1){
+            if (tick - created > rand(effect[1])) {
+              edit([x, y], 0, true);
+              stop = true;
+            }
+            continue;
+          }
+          
+          // EFFECT MOVE
+          if (effect[0] == 'move' && effect.length > 2) {
+            if (Math.random() < effect[2]) {
+              move([effect[1][0], effect[1][1]]);
+            }
+            continue;
+          }
+        }
+
+        if (stop) continue;
+      }
     }
 
     pxs[i][0] = x;
@@ -429,11 +422,12 @@ brushSize.addEventListener('input', e => brushSizeDisplay.innerHTML = brush = br
 pixelSize.addEventListener('input', e => pixelSizeDisplay.innerHTML = pxScale = pixelSize.value);
 itemAlpha.addEventListener('input', e => itemAlphaDisplay.innerHTML = preAlpha = itemAlpha.value);
 materialSelect.addEventListener('input', e => currentId = materialIDs.indexOf(materialSelect.value));
+pauseBtn.addEventListener('input', e => paused = !paused);
 
 resizeCanvas();
 window.addEventListener('resize', e => {
   resizeCanvas();
-  redraw();
+  main();
 });
 
-setInterval(redraw, 1000/60)
+setInterval(main, 1000/60)

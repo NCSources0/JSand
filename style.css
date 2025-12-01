@@ -45,6 +45,11 @@ input, select {
   width: 120px;
 }
 
+input[type="checkbox"] {
+  width: min-content;
+  float: right;
+}
+
 select {
   background-color: #fff1;
   border: 0;
