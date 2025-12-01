@@ -10,11 +10,14 @@
   font-style: italic;
 }
 
+body {
+  background: #000;
+}
+
 canvas {
   position: fixed;
   left: 0;
   top: 0;
-  background: #000;
 }
 
 .options {

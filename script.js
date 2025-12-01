@@ -3,13 +3,46 @@ const ctx = canvas.getContext('2d');
 const tmpCanvas = document.createElement('canvas');
 const tmpCTX = tmpCanvas.getContext('2d');
 let tmpImg;
+let tick = 0;
 const params = new URLSearchParams(window.location.search);
 const url = new URL(window.location.href);
+
+const exampleElem = {
+  EXAMPLE_Bullet: {
+    name: 'Bullet',
+    color: ['rgb', [255, 255, 255]],
+    rules: [[0, -1]],
+    effects: [['dieAtTop'], ['kill', [0, -1], 'MAINGAME_Wall']]
+  },
+  EXAMPLE_Spawner: {
+    name: 'Spawner',
+    color: ['rgb', [100, 0, 0]],
+    rules: [[-1, 0], [0, 1]],
+    effects: [['spawn', 'MAINGAME_Wall', 0.01], ['kill', [-1, 0], 'EXAMPLE_Spawner'], ['kill', [0, 1], 'EXAMPLE_Spawner']]
+  }
+};
+const exampleEffect = [
+  [
+    'dieAtTop',
+    1,
+    `if (y <= 0) edit([x, y], 0, true); stop.stop = true;`
+  ],
+  [
+    'spawn',
+    3,
+    `if (Math.random() < effect[2]) edit([Math.floor(Math.random() * c.w), Math.floor(Math.random() * c.h)], effect[1], false)`
+  ]
+];
+params.set('addElem', JSON.stringify(exampleElem));
+params.set('addEffect', JSON.stringify(exampleEffect));
 
 let preAlpha = 1;
 let currentId = 0;
 let pxScale = 16;
 let brush = 3;
+
+let currentKey;
+let currentMaterial;
 
 const brushSize = document.querySelector('input#brush');
 const brushSizeDisplay = document.querySelector('span#brush');
@@ -29,7 +62,7 @@ const advanced = document.querySelector('#advanced')
 if (params.has('advanced')) advanced.toggleAttribute('hidden');
 
 const c = { w: 1, h: 1 };
-let mouse = {x:0,y:0,down:false};
+let mouse = { x: 0, y: 0, down: false };
 let m = [0, 0];
 let keys = {};
 
@@ -48,76 +81,87 @@ let pxs = [];
   effects: [['kill', [x, y], id], ['die', [time1, time2]], ['move', [x, y]]]
 }
 */
-const materials = [
-  {
+const materials = {
+  MAINGAME_Eraser: {
     name: 'Eraser',
     color: ['rgb', [255, 0, 0]],
     rules: [],
     effects: [['die', [0, 0]]]
   },
-  {
+  MAINGAME_Wall: {
     name: 'Wall',
     color: ['hsv', [0, 0, 20]],
     rules: []
   },
-  {
+  MAINGAME_Sand: {
     name: 'Sand',
     color: ['rgb', [255, 255, 200], [255, 255, 255]],
     rules: [[0, 1], [[-1, 1], [1, 1]]]
   },
-  {
+  MAINGAME_Stone: {
     name: 'Stone',
     color: ['hsv', [0, 0, 30], [0, 0, 50]],
     rules: [[0, 1]]
   },
-  {
+  MAINGAME_Water: {
     name: 'Water',
     color: ['rgb', [0, 0, 100], [0, 0, 150]],
     rules: [[0, 1], [[-1, 0], [1, 0]]]
   },
-  {
+  MAINGAME_Acid: {
     name: 'Acid',
     color: ['rgb', [0, 100, 0], [0, 0, 100]],
     rules: [[0, 1], [[1, 0], [-1, 0]]],
-    effects: [['die', [2000, 3000]], ['kill', [0, 1], '!5'], ['kill', [0, -1], '!5'], ['kill', [1, -1], '!5'], ['kill', [-1, -1], '!5'], ['kill', [1, 0], '!5'], ['kill', [-1, 0], '!5']]
+    effects: [['die', [60, 120]], ['kill', [0, 1], '!MAINGAME_Acid'], ['kill', [0, -1], '!MAINGAME_Acid'], ['kill', [1, -1], '!MAINGAME_Acid'], ['kill', [-1, -1], '!MAINGAME_Acid'], ['kill', [1, 0], '!MAINGAME_Acid'], ['kill', [-1, 0], '!MAINGAME_Acid']]
   },
-  {
+  MAINGAME_Fire: {
     name: 'Fire',
     color: ['hsv', [60, 100, 100], [0, 100, 100]],
     rules: [[0, -1]],
-    effects: [['die', [2000, 10000]], ['kill', [0, -1], '!6 !4'], ['kill', [1, 0], '!6 !4'], ['kill', [-1, 0], '!6 !4'], ['move', [1, 0], 0.1], ['move', [-1, 0], 0.1]]
+    effects: [['die', [60, 300]], ['kill', [0, -1], '!MAINGAME_Fire !MAINGAME_Water'], ['kill', [1, 0], '!MAINGAME_Fire !MAINGAME_Water'], ['kill', [-1, 0], '!MAINGAME_Fire !MAINGAME_Water'], ['move', [1, 0], 0.1], ['move', [-1, 0], 0.1]]
   },
-  {
+  MAINGAME_Void: {
     name: 'Void',
     color: ['rgb', [20, 0, 20]],
     rules: [],
-    effects: [['kill', [0, -1], '!7'], ['kill', [0, 1], '!7'], ['kill', [-1, 0], '!7'], ['kill', [1, 0], '!7']]
+    effects: [['kill', [0, -1], '!MAINGAME_Void'], ['kill', [0, 1], '!MAINGAME_Void'], ['kill', [-1, 0], '!MAINGAME_Void'], ['kill', [1, 0], '!MAINGAME_Void']]
   }
-];
+};
+const materialIDs = [];
 
 
 const effectFunctions = {};
 function addEffect([name, min, func]){
-  func = new Function('data', 'move', 'find', 'findID', 'rand', 'edit', 'keys', 'x', 'y', func)
+  console.log(`Adding Effect "${name}:"\n${func}`)
+  try {
+    func = new Function('data', 'move', 'find', 'findID', 'rand', 'edit', 'keys', 'x', 'y', 'effect', 'stop', func);
   effectFunctions[name] = {min, func};
+  } catch (e) {
+    console.error(`Effect "${name}" has an error:\n${e}`);
+  }
 }
 
+console.log('URL Parameters:');
+console.log(params.toString());
 if (params.has('addElem')) {
-  const toAdd = params.get('addElem');
-  console.log('Adding Element:\n'+toAdd);
-  materials.push(...JSON.parse(toAdd));
+  const toAdd = JSON.parse(params.get('addElem'));
+  for (const key in toAdd) {
+    const elem = toAdd[key];
+    console.log(`Adding Element "${elem.name}""${key}"`);
+    materials[key] = elem;
+  }
 }
 
 if (params.has('addEffect')) {
   const toAdd = JSON.parse(params.get('addEffect'));
-  console.log('Adding Effect:\n'+toAdd);
   toAdd.forEach(addEffect);
 }
 
-for (let i = 0; i < materials.length; i++) {
-  const mat = materials[i];
+for (const key in materials) {
+  materialIDs.push(key);
+  const mat = materials[key];
   const material = document.createElement('option');
-  material.value = i;
+  material.value = key;
   material.innerHTML = mat.name;
   const [type, r, g, b] = HSVtoRGB([mat.color[0], ...mat.color[1]]);
   material.style.background = rgb(r, g, b);
@@ -177,7 +221,7 @@ function findID([x,y]) {
   return i === -1 ? -1 : ids[i];
 }
 
-function edit([x, y], id, remove) {
+function edit([x, y], key, remove) {
   const i = find([x, y]);
   if (i > -1) {
     pxs.splice(i, 1);
@@ -187,7 +231,7 @@ function edit([x, y], id, remove) {
 
   if (remove) return i;
 
-  const col = materials[id].color;
+  const col = materials[key].color;
   let [r, g, b] = col[1];
   if (col.length > 2) {
     r = rand([r, col[2][0]]);
@@ -196,8 +240,10 @@ function edit([x, y], id, remove) {
   }
 
   pxs.push([x, y]);
-  ids.push(id);
-  datas.push({color: [col[0], r, g, b], created: Date.now()})
+  ids.push(key);
+  datas.push({color: [col[0], r, g, b], created: tick});
+
+  return pxs.length - 1;
 }
 
 function formatColor([type, r, g, b]) {
@@ -220,6 +266,8 @@ function px(x, y, [type, r, g, b]) {
 }
 
 function redraw() {
+  tick++;
+
   const preID = currentId;
   if              (keys['`']) currentId = 0;
   else if         (keys['1']) currentId = 1;
@@ -237,6 +285,8 @@ function redraw() {
   else if (keys['Backspace']) currentId = 13;
 
   if (preID != currentId) materialSelect.value = currentId;
+  currentKey = materialIDs[currentId];
+  currentMaterial = materials[currentKey];
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (!tmpImg || tmpImg.width !== c.w || tmpImg.height !== c.h) tmpImg = ctx.createImageData(c.w, c.h);
@@ -249,7 +299,7 @@ function redraw() {
       for (let y = -half; y <= half - (brush-1) % 2; y++) {
         const nx = m[0] + x;
         const ny = m[1] + y;
-        if (nx >= 0 && ny >= 0 && nx < c.w && ny < c.h) edit([nx, ny], currentId, currentId == 0);
+        if (nx >= 0 && ny >= 0 && nx < c.w && ny < c.h) edit([nx, ny], currentKey, currentKey == 'MAINGAME_Eraser');
       }
     }
   }
@@ -274,14 +324,28 @@ function redraw() {
       return true;
     }
 
+    function replace([nx, ny], key, remove) {
+      const pxi = edit([nx, ny], key, remove);
+      if (nx == x && ny == y) stop = true;
+      if (pxi != -1 && pxi < i) i--;
+    }
+
     let stop = false;
     if (effects) {
       for (let effect of effects) {
+        let stopObj = { stop: false };
+        if (effectFunctions[effect[0]]) {
+          const func = effectFunctions[effect[0]];
+          if (effect.length >= func.min) func.func(data, move, find, findID, rand, replace, keys, x, y, effect, stopObj.stop);
+          continue;
+        }
+        if (stopObj.stop) stop = true;
+
         // EFFECT KILL
         if (effect[0] == 'kill' && effect.length > 2) {
           const epos = [x + effect[1][0], y + effect[1][1]];
           const targetID = findID(epos);
-          const list = effect[2].split(' ').map(t => Number(t.slice(1)));
+          const list = effect[2].split(' ').map(t => t.slice(1));
 
           if (!list.includes(targetID)) {
             const pxi = edit(epos, 0, true);
@@ -293,7 +357,7 @@ function redraw() {
 
         // EFFECT DIE
         if (effect[0] == 'die' && effect.length > 1){
-          if (Date.now() - created > rand(effect[1])) {
+          if (tick - created > rand(effect[1])) {
             edit([x, y], 0, true);
             stop = true;
           }
@@ -306,12 +370,6 @@ function redraw() {
             move([effect[1][0], effect[1][1]]);
           }
           continue;
-        }
-
-        if (effectFunctions[effect[0]]) {
-          const func = effectFunctions[effect[0]];
-          if (effect.length >= func.min)
-          func.func(data, move, find, findID, rand, edit, keys, x, y);
         }
       }
 
@@ -344,7 +402,7 @@ function redraw() {
   const scaledBrush = brush * pxScale
   const preScale = [m[0] * pxScale + offset[0] - scaledHalf, m[1] * pxScale + offset[1] - scaledHalf, scaledBrush, scaledBrush]
   // Item preview
-  const col = materials[currentId].color;
+  const col = currentMaterial.color;
   ctx.fillStyle = formatColorA([col[0], ...col[1], preAlpha]);
   ctx.fillRect(...preScale);
 
@@ -370,9 +428,12 @@ document.addEventListener('keyup', e => delete keys[e.key]);
 brushSize.addEventListener('input', e => brushSizeDisplay.innerHTML = brush = brushSize.value);
 pixelSize.addEventListener('input', e => pixelSizeDisplay.innerHTML = pxScale = pixelSize.value);
 itemAlpha.addEventListener('input', e => itemAlphaDisplay.innerHTML = preAlpha = itemAlpha.value);
-materialSelect.addEventListener('input', e => currentId = +materialSelect.value);
+materialSelect.addEventListener('input', e => currentId = materialIDs.indexOf(materialSelect.value));
 
 resizeCanvas();
-window.addEventListener('resize', resizeCanvas)
+window.addEventListener('resize', e => {
+  resizeCanvas();
+  redraw();
+});
 
-setInterval(redraw, 1000/60);
+setInterval(redraw, 1000/60)
